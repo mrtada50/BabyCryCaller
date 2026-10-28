@@ -1,0 +1,44 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Get YAMNet model
+        run: |
+          mkdir -p app/src/main/assets
+          M=app/src/main/assets/lite-model_yamnet_classification_tflite_1.tflite
+          if [ ! -s "$M" ]; then
+            curl -fL -o "$M" "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/audio_classification/android/lite-model_yamnet_classification_tflite_1.tflite" \
+            || curl -fL -o "$M" "https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1?lite-format=tflite" \
+            || true
+          fi
+          if [ ! -s "$M" ] || [ "$(stat -c%s "$M")" -lt 1000000 ]; then
+            echo "YAMNet model missing: put it in app/src/main/assets/"
+            exit 1
+          fi
+          ls -l app/src/main/assets
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BabyCryCaller-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
