@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -30,6 +31,10 @@ class MainActivity : Activity() {
         status = findViewById(R.id.status)
         toggle = findViewById(R.id.toggle)
         phone.setText(Prefs.number(this))
+
+        val persist = findViewById<CheckBox>(R.id.persist)
+        persist.isChecked = Prefs.persistent(this)
+        persist.setOnCheckedChangeListener { _, v -> Prefs.setPersistent(this, v) }
 
         toggle.setOnClickListener { onToggle() }
         findViewById<Button>(R.id.battery).setOnClickListener {

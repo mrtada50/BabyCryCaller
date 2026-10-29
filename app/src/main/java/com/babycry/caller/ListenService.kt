@@ -1,5 +1,6 @@
 package com.babycry.caller
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -31,6 +32,7 @@ class ListenService : Service() {
     companion object {
         const val ACTION_START = "com.babycry.caller.START"
         const val ACTION_STOP = "com.babycry.caller.STOP"
+        const val ACTION_RESUME = "com.babycry.caller.RESUME"
         @Volatile var alive = false
 
         private const val CHANNEL = "listen"
@@ -47,6 +49,9 @@ class ListenService : Service() {
         private const val REJECT_MAX_MS = 18000L     // مكالمة أقصر من هذا ومدتها صفر = رفض
         private const val REDIAL_DELAY_MS = 2000L
         private const val MAX_ATTEMPTS = 30          // حد أمان
+
+        // الوضع المستمر
+        private const val REST_MS = 15 * 60 * 1000L  // الراحة قبل إعادة الاستماع
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -72,6 +77,14 @@ class ListenService : Service() {
             stopAll("تم الإيقاف يدوياً")
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RESUME) {
+            if (!alive) { stopSelf(); return START_NOT_STICKY }
+            if (!calling && !listening) {
+                setStatus("يستمع")
+                startListening()
+            }
+            return START_NOT_STICKY
+        }
         startFg("يستمع")
         if (!alive) {
             alive = true
@@ -86,6 +99,7 @@ class ListenService : Service() {
     override fun onDestroy() {
         alive = false
         listening = false
+        cancelResume()
         handler.removeCallbacksAndMessages(null)
         unregisterCallState?.invoke()
         unregisterCallState = null
@@ -133,6 +147,7 @@ class ListenService : Service() {
         alive = false
         listening = false
         calling = false
+        cancelResume()
         handler.removeCallbacksAndMessages(null)
         unregisterCallState?.invoke()
         unregisterCallState = null
@@ -235,7 +250,7 @@ class ListenService : Service() {
         if (!calling) return
         attempts++
         if (attempts > MAX_ATTEMPTS) {
-            stopAll("وصل الحد الأقصى من المحاولات ($MAX_ATTEMPTS)")
+            endCycle("وصل الحد الأقصى من المحاولات ($MAX_ATTEMPTS)")
             return
         }
         sawOffhook = false
@@ -295,11 +310,37 @@ class ListenService : Service() {
         if (!calling) return
         val dur = lastOutgoingDuration()
         when {
-            dur == null -> stopAll("انتهى الاتصال (تعذر قراءة سجل المكالمات)")
-            dur > 0 -> stopAll("تم الرد على المكالمة")
-            elapsed < REJECT_MAX_MS -> stopAll("تم رفض المكالمة")
+            dur == null -> endCycle("انتهى الاتصال (تعذر قراءة سجل المكالمات)")
+            dur > 0 -> endCycle("تم الرد على المكالمة")
+            elapsed < REJECT_MAX_MS -> endCycle("تم رفض المكالمة")
             else -> handler.postDelayed({ placeCall() }, REDIAL_DELAY_MS)   // ما ردّ: نعيد الاتصال
         }
+    }
+
+    // نهاية دورة اتصال: إذا الوضع المستمر مفعّل نرتاح ثم نرجع نستمع، وإلا نوقف كل شي
+    private fun endCycle(msg: String) {
+        if (!Prefs.persistent(this)) {
+            stopAll(msg)
+            return
+        }
+        calling = false
+        handler.removeCallbacksAndMessages(null)
+        setStatus("$msg — يعيد الاستماع بعد 15 دقيقة")
+        val am = getSystemService(AlarmManager::class.java)
+        am.setAndAllowWhileIdle(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + REST_MS,
+            resumePi()
+        )
+    }
+
+    private fun resumePi(): PendingIntent = PendingIntent.getService(
+        this, 3, Intent(this, ListenService::class.java).setAction(ACTION_RESUME),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+
+    private fun cancelResume() {
+        try { getSystemService(AlarmManager::class.java).cancel(resumePi()) } catch (_: Exception) {}
     }
 
     private fun lastOutgoingDuration(): Long? = try {
