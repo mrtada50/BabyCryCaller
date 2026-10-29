@@ -250,7 +250,7 @@ class ListenService : Service() {
         if (!calling) return
         attempts++
         if (attempts > MAX_ATTEMPTS) {
-            endCycle("وصل الحد الأقصى من المحاولات ($MAX_ATTEMPTS)")
+            stopAll("وصل الحد الأقصى من المحاولات ($MAX_ATTEMPTS)")
             return
         }
         sawOffhook = false
@@ -310,14 +310,14 @@ class ListenService : Service() {
         if (!calling) return
         val dur = lastOutgoingDuration()
         when {
-            dur == null -> endCycle("انتهى الاتصال (تعذر قراءة سجل المكالمات)")
-            dur > 0 -> endCycle("تم الرد على المكالمة")
+            dur == null -> stopAll("انتهى الاتصال (تعذر قراءة سجل المكالمات)")
+            dur > 0 -> stopAll("تم الرد على المكالمة")
             elapsed < REJECT_MAX_MS -> endCycle("تم رفض المكالمة")
             else -> handler.postDelayed({ placeCall() }, REDIAL_DELAY_MS)   // ما ردّ: نعيد الاتصال
         }
     }
 
-    // نهاية دورة اتصال: إذا الوضع المستمر مفعّل نرتاح ثم نرجع نستمع، وإلا نوقف كل شي
+    // بعد الرفض فقط: إذا الوضع المستمر مفعّل نرتاح 15 دقيقة ثم نرجع نستمع، وإلا نوقف كل شي
     private fun endCycle(msg: String) {
         if (!Prefs.persistent(this)) {
             stopAll(msg)

@@ -45,7 +45,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="الوضع المستمر: لا يتوقف بعد الرفض أو الرد، ويعيد الاستماع بعد 15 دقيقة لحد ما توقفه بنفسك"
+        android:text="الوضع المستمر: بعد رفض المكالمة يعيد الاستماع بعد 15 دقيقة بدل ما يتوقف، لحد ما توقفه بنفسك"
         android:textSize="16sp" />
 
     <Button
